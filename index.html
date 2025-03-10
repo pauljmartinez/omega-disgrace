@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Omega Race - Simplified</title>
+    <style>
+      canvas {
+        border: 2px solid white;
+        background: black;
+        display: block;
+        margin: 0 auto;
+      }
+      body {
+        background: #111;
+        text-align: center;
+        color: white;
+        font-family: Arial, sans-serif;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>Omega Disgrace</h2>
+    <p>Use Arrow Keys to rotate/thrust, Space to shoot</p>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+
+    <script>
+      const canvas = document.getElementById("gameCanvas");
+      const ctx = canvas.getContext("2d");
+
+      // Player ship properties
+      let ship = {
+        x: 400,
+        y: 300, // Center of canvas
+        angle: 0, // In radians
+        speedX: 0, // X momentum
+        speedY: 0, // Y momentum
+        maxSpeed: 7,
+        bullets: [],
+        thrusting: false, // Added thrusting flag
+      };
+
+      // Enemy properties (simple drones)
+      let enemies = Array.from({ length: 5 }, () => ({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+      }));
+
+      // Keyboard controls
+      let keys = {};
+      window.addEventListener("keydown", (e) => (keys[e.key] = true));
+      window.addEventListener("keyup", (e) => (keys[e.key] = false));
+
+      // Collision detection function
+      function checkCollisions() {
+        ship.bullets.forEach((bullet, bulletIndex) => {
+          enemies.forEach((enemy, enemyIndex) => {
+            const dx = bullet.x - enemy.x;
+            const dy = bullet.y - enemy.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance < 10) { // Enemy hit
+              // Remove bullet
+              ship.bullets.splice(bulletIndex, 1);
+
+              // Remove enemy and spawn a new one
+              enemies.splice(enemyIndex, 1);
+              spawnNewEnemy(enemy.x, enemy.y);
+            }
+          });
+        });
+
+        // Check ship-enemy collision
+        enemies.forEach((enemy, enemyIndex) => {
+          const dx = ship.x - enemy.x;
+          const dy = ship.y - enemy.y;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+
+          if (distance < 15) { // Collision detected
+            enemies.splice(enemyIndex, 1);
+            spawnNewEnemy(enemy.x, enemy.y);
+            resetShip();
+          }
+        });
+      }
+
+      function resetShip() {
+        ship.x = canvas.width / 2;
+        ship.y = canvas.height / 2;
+        ship.speedX = 0;
+        ship.speedY = 0;
+        ship.angle = 0;
+      }
+
+      function spawnNewEnemy(oldX, oldY) {
+        for (let i = 0; i < 10; i++) {
+          ctx.beginPath();
+          ctx.arc(oldX + Math.random() * 20 - 10, oldY + Math.random() * 20 - 10, 3, 0, Math.PI * 2);
+          ctx.fillStyle = "yellow";
+          ctx.fill();
+        }
+        setTimeout(() => {
+          let newEnemy;
+          do {
+            newEnemy = {
+              x: Math.random() * canvas.width,
+              y: Math.random() * canvas.height,
+            };
+          } while (Math.abs(newEnemy.x - oldX) < 50 && Math.abs(newEnemy.y - oldY) < 50); // Ensure new enemy is not too close
+          enemies.push(newEnemy);
+        }, 100);
+      }
+
+      // Game loop
+      function update() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Handle ship rotation (always possible)
+        if (keys["ArrowLeft"]) ship.angle += 0.1;
+        if (keys["ArrowRight"]) ship.angle -= 0.1;
+
+        // Handle thrust (changes momentum)
+        if (keys["ArrowUp"]) {
+          ship.speedX += Math.cos(ship.angle) * 0.2;
+          ship.speedY -= Math.sin(ship.angle) * 0.2;
+          ship.thrusting = true;
+
+          // Cap the speed
+          const speed = Math.sqrt(
+            ship.speedX * ship.speedX + ship.speedY * ship.speedY
+          );
+          if (speed > ship.maxSpeed) {
+            ship.speedX = (ship.speedX / speed) * ship.maxSpeed;
+            ship.speedY = (ship.speedY / speed) * ship.maxSpeed;
+          }
+        } else {
+          ship.thrusting = false;
+        }
+
+        // Apply momentum
+        ship.x += ship.speedX;
+        ship.y += ship.speedY;
+
+        // Bounce at boundaries with dampening (0.8 reduces speed on bounce)
+        if (ship.x < 0) {
+          ship.x = 0;
+          ship.speedX = -ship.speedX * 0.8;
+        }
+        if (ship.x > canvas.width) {
+          ship.x = canvas.width;
+          ship.speedX = -ship.speedX * 0.8;
+        }
+        if (ship.y < 0) {
+          ship.y = 0;
+          ship.speedY = -ship.speedY * 0.8;
+        }
+        if (ship.y > canvas.height) {
+          ship.y = canvas.height;
+          ship.speedY = -ship.speedY * 0.8;
+        }
+
+        // Apply friction to slow down when not thrusting
+        ship.speedX *= 0.995;
+        ship.speedY *= 0.995;
+
+        // Shooting
+        if (keys[" "]) {
+          if (!ship.lastShot || Date.now() - ship.lastShot > 200) {
+            ship.bullets.push({
+              x: ship.x,
+              y: ship.y,
+              angle: ship.angle,
+              speed: 10,
+            });
+            ship.lastShot = Date.now();
+          }
+        }
+
+        // Update bullets
+        ship.bullets.forEach((bullet, i) => {
+          bullet.x += Math.cos(bullet.angle) * bullet.speed;
+          bullet.y -= Math.sin(bullet.angle) * bullet.speed;
+          if (
+            bullet.x < 0 ||
+            bullet.x > canvas.width ||
+            bullet.y < 0 ||
+            bullet.y > canvas.height
+          ) {
+            ship.bullets.splice(i, 1);
+          }
+        });
+
+        // Check for collisions
+        checkCollisions();
+
+        // Draw ship (triangle) with thrust effect
+        ctx.save();
+        ctx.translate(ship.x, ship.y);
+        ctx.rotate(-ship.angle);
+
+        // Draw flame if thrusting
+        if (ship.thrusting) {
+          ctx.beginPath();
+          ctx.moveTo(-10, 0);
+          ctx.lineTo(-20, 5 + Math.random() * 5);
+          ctx.lineTo(-20, -5 - Math.random() * 5);
+          ctx.closePath();
+          ctx.fillStyle = "orange";
+          ctx.fill();
+        }
+
+        ctx.beginPath();
+        ctx.moveTo(15, 0);
+        ctx.lineTo(-10, 10);
+        ctx.lineTo(-10, -10);
+        ctx.closePath();
+        ctx.strokeStyle = "white";
+        ctx.stroke();
+        ctx.restore();
+
+        // Draw bullets
+        ship.bullets.forEach((bullet) => {
+          ctx.beginPath();
+          ctx.arc(bullet.x, bullet.y, 2, 0, Math.PI * 2);
+          ctx.fillStyle = "white";
+          ctx.fill();
+        });
+
+        // Draw enemies (simple circles)
+        enemies.forEach((enemy) => {
+          ctx.beginPath();
+          ctx.arc(enemy.x, enemy.y, 10, 0, Math.PI * 2);
+          ctx.strokeStyle = "red";
+          ctx.stroke();
+        });
+
+        requestAnimationFrame(update);
+      }
+
+      // Start the game
+      update();
+    </script>
+  </body>
+</html>
